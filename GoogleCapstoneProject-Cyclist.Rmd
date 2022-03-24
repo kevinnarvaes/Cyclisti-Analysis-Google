@@ -1,0 +1,275 @@
+---
+title: "Google Capstone Project - Cyclist"
+author: "Kevin Narvaes"
+date: "3/9/2022"
+output: html_document
+---
+
+For our analysis, we will be looking at the Cyclistic bike-share company, 
+a fictional company which will requiere to apply put analytic knowledge in order
+to get useful insights.
+
+# Ask
+
+We are going to determine how annual members and casual riders differ from each
+other, in order to take future decisions like determining what are the best occasions
+for special offers, and knowing the habits of our members to know how to accommodate
+to their demands.
+
+We will be using R for our analysis to get a variety of insights.
+
+# Prepare
+
+## Importing Our Main Libraries
+```{r, warning = FALSE, message = FALSE}
+#Imported libraries
+library(tidyverse)    #for data cleaning
+library(ggplot2)      #plotting
+library(skimr)        #analysis from attributes
+library(lubridate)    #Working with dates
+library(RColorBrewer) #Setting color to plots
+library(formattable)  #Formatting numbers
+library(ggthemes)     #predetermined themes for plots
+library(extrafont)    #Additional fonts
+library(cowplot)      #For arranging plots on a grid
+```
+## Our Data Source
+Our data is hosted in this [link](https://divvy-tripdata.s3.amazonaws.com/index.html)
+
+Note: The datasets have a different name because Cyclistic is a fictional company. For the purposes of this case study, the datasets are appropriate and will enable you to answer the business questions. The data has been made available Motivate International Inc.) This is public data that you can use to explore how different customer types are using Cyclistic bikes. But note that data-privacy issues prohibit you from using riders’ personally identifiable information.
+
+We download the files on the main directory, on a Data folder.
+
+We proceed to use the list.files function to get the list of all our csv files in our
+folder, then we apply the map_df in order to read each of them and append them together.
+
+
+```{r, warning = FALSE, message = FALSE}
+cyclist_data <- list.files(path = "./Data", full.names = TRUE) %>% 
+  map_df(~read_csv(.))
+```
+## Exploring our data
+
+We proceed to check our column names
+
+```{r}
+colnames(cyclist_data)
+```
+We proceed to rename our columns to a more understandable name
+
+```{r}
+cyclist_data_names_fixed <- cyclist_data %>%
+  rename(started_datetime = started_at,
+         ended_datetime = ended_at)
+colnames(cyclist_data_names_fixed)
+```
+
+We will use out skimr function to check our column stats.
+```{r}
+skim_without_charts(cyclist_data_names_fixed)
+```
+# Process
+
+## Dealing with empty values
+First we check how many empty values we have per attribute.
+```{r}
+cyclist_data_names_fixed %>% 
+  summarize(empty_rideable_type = sum(is.na(rideable_type)),
+            empty_start_station_name = sum(is.na(start_station_name)),
+            empty_end_station_name = sum(is.na(end_station_name)),
+            empty_started_datetime = sum(is.na(started_datetime)),
+            empty_ended_datetime = sum(is.na(ended_datetime))
+            ) %>% 
+  t(.)
+```
+
+Then we proceed to replace any empty values using mutate on the columns that we are intesrested in.
+
+```{r, results = FALSE}
+cyclist_data_no_empty <-cyclist_data_names_fixed %>% 
+  mutate(start_station_name = coalesce(start_station_name, 'Unknown'),
+         start_station_id = coalesce(start_station_id, '0'),
+         end_station_name = coalesce(end_station_name, 'Unknown'),
+         end_station_id = coalesce(end_station_id, '0'),
+         )
+```
+
+We'll now do the proper calculations. We are interested on how much time each ride
+takes, and make time analysis based on month and day of the week. We'll use the
+mutate function for that.
+```{r, results = FALSE}
+cyclist_data_time <- cyclist_data_no_empty %>% 
+  mutate(traveled_time_mins = as.numeric(difftime(ended_datetime, started_datetime, units = "mins")),
+         traveled_time_hours = as.numeric(difftime(ended_datetime, started_datetime, units = "hours")),
+         month = month(started_datetime, label = TRUE),
+         day_of_week_started = wday(started_datetime, label = TRUE)
+         )
+
+```
+
+Since we will be analyzing how Cyclistic Member Types differ, we'll be using color coding for each member
+type. We'll set the color hex codes on a vector so we can distinguish them on visuals
+
+```{r, results = FALSE}
+plot_colors <-  c("#5BE0FF", "#6D5BFF")
+```
+
+We are now ready to proceed with our analysis process
+
+# Analyze
+
+We want to know how annual members and casual riders differ based on the total rides of each group per month,
+to check if there's a trend among each other. We'll use a line chart for comparing trends.
+```{r}
+cyclist_data_time %>% 
+  group_by(month = month(started_datetime, label = TRUE), member_casual) %>% 
+  summarize(total_rides = n()) %>% 
+  ggplot() +
+  geom_line(mapping = aes(x = month, y = total_rides, group = member_casual, color = member_casual), 
+            linetype = "solid", size = 1, alpha = 0.8) +
+  theme_fivethirtyeight() + 
+  scale_color_manual(values = plot_colors) +
+  scale_y_continuous(labels = comma) +
+  labs(title = 'Total rides per month by member type',
+       subtitle = "Data from 2021",
+       x = "Month of the year",
+       y = "Total Rides",
+       color = "Member Type") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.title = element_text())
+  
+```
+
+Then, we will check how they differ based on their rideable type of preference.
+```{r}
+ggplot(data = cyclist_data_time) +
+  geom_bar(mapping = aes(x = rideable_type, group = member_casual, fill = member_casual),
+           stat="count",
+           position = "dodge") +
+  theme_fivethirtyeight() +
+  stat_count(aes(x = rideable_type,group =member_casual, label = comma(..count.., digits = 0)), 
+             geom = "text", color = "black", size = 3.5,
+             position = position_dodge(width = 0.9),vjust =  -0.25) +
+  scale_fill_manual(values = plot_colors)+
+  labs(title = "Total Rides per bike type and member type",
+       subtitle = "Data from year 2021",
+       y ="Total Rides",
+       x = "Rideable Type",
+       color = "Member Type") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y = element_blank(),
+        axis.title.y = element_text(),
+        axis.title.x = element_text())
+```
+Accordingly, we can also check what are the most popular day, based on the average totals per day.
+
+```{r}
+cyclist_data_time %>% 
+  group_by(started_date = date(started_datetime), day_of_week_started, member_casual) %>% 
+  summarize(total_rides = n()) %>% 
+  group_by(day_of_week_started, member_casual) %>% 
+  summarize(average_rides_per_day = as.integer(mean(total_rides))) %>% 
+  ggplot(aes(x = day_of_week_started, y = average_rides_per_day, group = member_casual)) +
+  geom_bar(mapping = aes(fill = member_casual),
+           stat='identity',
+           position = "dodge") +
+  theme_fivethirtyeight() +
+  stat_identity(aes(label = comma(average_rides_per_day, digits = 0)), 
+             geom = "text", color = "black", size = 3.5,
+             position = position_dodge(width = 0.9),vjust =  -0.25) +
+  scale_fill_manual(values = plot_colors)+
+  labs(title = "Average rides by cyclist type per day",
+       subtitle = "Data from year 2021",
+       y ="Average Rides",
+       x = "Day of the week",
+       color = "Member Type") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y = element_blank(),
+        axis.title.y = element_text(),
+        axis.title.x = element_text())
+```
+
+
+
+We would also like to check out how our traveled times distribute. We'll use the the summary function again to quickly check
+
+```{r}
+cyclist_data_time %>% 
+  mutate (traveled_time_mins_n = as.numeric(traveled_time_mins),
+          traveled_time_hours_n = as.numeric(traveled_time_hours)) %>%  
+  select(traveled_time_mins_n, traveled_time_hours_n ) %>% 
+  skim()
+```
+
+Our data is returned in both instances in seconds. We can check that we have negative values like -0.967 hrs (about almost hour) with the min result. Whether the bigger values like the max 932 hrs (or about 39 days) is open to interpretation on how much time the person took to return the bike, since it'll be highly improbable a person would continuously ride a bike for 39 straight days, non-stop.
+
+Our standard deviation is incredibly large if we are measuring using minutes. Also, if we check the histogram and numbers approximately the p75, we can see that our values are skimmed to the left, so, we can infer 75% of our datasets timings are under 22 minutes approximately. In simpler word, most of our values are represent shorter rides. This becomes even clearer checking the values using the traveled_time_hours variable, with a p75 of 0.363 hours
+
+If we were to display our values in two simple boxplots, it'll display as follows:
+
+```{r}
+plot_traveled_time_hours <- cyclist_data_time %>% 
+  ggplot() +
+  geom_boxplot(mapping = aes(y = traveled_time_hours))
+
+plot_traveled_time_mins <- cyclist_data_time %>% 
+  ggplot() +
+  geom_boxplot(mapping = aes(y = traveled_time_mins))
+
+plot_grid(plot_traveled_time_hours, plot_traveled_time_mins, labels = "AUTO")
+```
+Since our data is skewed to the left, we'll apply a log transformation to our time variables in order to normalize our data. It'll be important to filter out less than 0 values in order for the log transformation to work 
+
+```{r}
+cyclistic_data_log_trans <- cyclist_data_time %>% 
+  filter(cyclist_data_time$traveled_time_mins >= 0) %>% 
+  mutate(traveled_time_mins_logd = log(na_if(as.numeric(traveled_time_mins), 0)),
+         traveled_time_hours_logd = log(na_if(as.numeric(traveled_time_hours), 0))
+         )
+
+```
+
+We'll proceed to check how our values now distribute.
+```{r}
+cyclistic_data_log_trans %>% 
+  select(traveled_time_mins_logd, traveled_time_hours_logd ) %>% 
+  skim()
+```
+
+Plotting our data will return the following result
+```{r}
+boxplot_traveled_time_hours_ln <- cyclistic_data_log_trans %>% 
+  ggplot() + geom_boxplot(mapping = aes(y = traveled_time_mins_logd), fill = "#BF7CF7")
+
+boxplot_traveled_time_mins_ln <- cyclistic_data_log_trans %>% 
+  ggplot() + geom_boxplot(mapping = aes(y = traveled_time_hours_logd), fill = "#7ABAFF")
+
+hist_traveled_time_hours_ln <- cyclistic_data_log_trans %>% 
+  ggplot() + geom_histogram(mapping = aes(x = traveled_time_mins_logd), fill = "#BF7CF7", color = "#525252")
+
+hist_traveled_time_mins_ln <- cyclistic_data_log_trans %>% 
+  ggplot() +geom_histogram(mapping = aes(x = traveled_time_hours_logd), fill = "#7ABAFF", color = "#525252")
+
+plot_grid(boxplot_traveled_time_hours_ln, hist_traveled_time_hours_ln,
+          boxplot_traveled_time_mins_ln, hist_traveled_time_mins_ln,
+          labels = "AUTO", nrow = 2)
+```
+We can see know our data is normally distributed. If we were to calculate our average time in minutes, returning  2.48, we will transform the number apply the inverse transformation of a log: an exponential
+
+```{r}
+# WIP
+```
+## Most Popular day
+The most popular days in 2021
+
+```{r}
+cyclist_data_time %>% 
+  filter(cyclist_data_time$traveled_time_hours <= 0.5 & cyclist_data_time$traveled_time_hours >= 0) %>% 
+  mutate(month = month(started_datetime, label = TRUE)) %>% 
+  ggplot() +
+  geom_boxplot(mapping = aes(x = month, y = traveled_time_hours,color = member_casual))+
+  scale_color_manual(values = plot_colors)
+```
