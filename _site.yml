@@ -1,0 +1,12 @@
+name: "Cyclistic Company Analysis"
+output_dir: "docs"
+navbar:
+  title: "Data"
+  left:
+  - text: "Home"
+   href: index.html
+  - text: "Analysis"
+   href: speed-and-distance.html
+output:
+  html_document:
+ theme: cosmo
